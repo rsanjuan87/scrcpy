@@ -130,16 +130,6 @@ public final class Server {
                 connection.sendDeviceMeta(Device.getDeviceName());
             }
 
-            if (control) {
-                ControlChannel controlChannel = connection.getControlChannel();
-                Controller controller = new Controller(device, controlChannel, cleanUp, options.getClipboardAutosync(), options.getPowerOn());
-                device.setClipboardListener(text -> {
-                    DeviceMessage msg = DeviceMessage.createClipboard(text);
-                    controller.getSender().send(msg);
-                });
-                asyncProcessors.add(controller);
-            }
-
             if (audio) {
                 AudioCodec audioCodec = options.getAudioCodec();
                 AudioCapture audioCapture = new AudioCapture(options.getAudioSource());
@@ -167,6 +157,16 @@ public final class Server {
                 SurfaceEncoder surfaceEncoder = new SurfaceEncoder(surfaceCapture, videoStreamer, options.getVideoBitRate(), options.getMaxFps(),
                         options.getVideoCodecOptions(), options.getVideoEncoder(), options.getDownsizeOnError());
                 asyncProcessors.add(surfaceEncoder);
+            }
+
+            if (control) {
+                ControlChannel controlChannel = connection.getControlChannel();
+                Controller controller = new Controller(device, controlChannel, cleanUp, options.getClipboardAutosync(), options.getPowerOn());
+                device.setClipboardListener(text -> {
+                    DeviceMessage msg = DeviceMessage.createClipboard(text);
+                    controller.getSender().send(msg);
+                });
+                asyncProcessors.add(controller);
             }
 
             Completion completion = new Completion(asyncProcessors.size());
