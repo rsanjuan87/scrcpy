@@ -2,6 +2,7 @@ package com.genymobile.scrcpy;
 
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.SystemClock;
 
 import java.io.File;
 import java.io.IOException;
@@ -144,6 +145,7 @@ public final class Server {
                 asyncProcessors.add(audioRecorder);
             }
 
+            CameraCapture cameraCapture = null;
             if (video) {
                 Streamer videoStreamer = new Streamer(connection.getVideoFd(), options.getVideoCodec(), options.getSendCodecMeta(),
                         options.getSendFrameMeta());
@@ -151,8 +153,9 @@ public final class Server {
                 if (options.getVideoSource() == VideoSource.DISPLAY) {
                     surfaceCapture = new ScreenCapture(device);
                 } else {
-                    surfaceCapture = new CameraCapture(options.getCameraId(), options.getCameraFacing(), options.getCameraSize(),
+                    cameraCapture = new CameraCapture(options.getCameraId(), options.getCameraFacing(), options.getCameraSize(),
                             options.getMaxSize(), options.getCameraAspectRatio(), options.getCameraFps(), options.getCameraHighSpeed());
+                    surfaceCapture = cameraCapture;
                 }
                 SurfaceEncoder surfaceEncoder = new SurfaceEncoder(surfaceCapture, videoStreamer, options.getVideoBitRate(), options.getMaxFps(),
                         options.getVideoCodecOptions(), options.getVideoEncoder(), options.getDownsizeOnError());
@@ -161,7 +164,8 @@ public final class Server {
 
             if (control) {
                 ControlChannel controlChannel = connection.getControlChannel();
-                Controller controller = new Controller(device, controlChannel, cleanUp, options.getClipboardAutosync(), options.getPowerOn());
+                Controller controller = new Controller(
+                        device, controlChannel, cameraCapture, cleanUp, options.getClipboardAutosync(), options.getPowerOn());
                 device.setClipboardListener(text -> {
                     DeviceMessage msg = DeviceMessage.createClipboard(text);
                     controller.getSender().send(msg);

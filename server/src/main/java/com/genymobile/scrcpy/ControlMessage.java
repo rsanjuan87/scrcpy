@@ -20,6 +20,7 @@ public final class ControlMessage {
     public static final int TYPE_UHID_CREATE = 12;
     public static final int TYPE_UHID_INPUT = 13;
     public static final int TYPE_OPEN_HARD_KEYBOARD_SETTINGS = 14;
+    public static final int TYPE_SET_CAMERA_TORCH = 15;
 
     public static final long SEQUENCE_INVALID = 0;
 
@@ -45,6 +46,7 @@ public final class ControlMessage {
     private long sequence;
     private int id;
     private byte[] data;
+    private boolean enabled;
 
     private ControlMessage() {
     }
@@ -144,6 +146,13 @@ public final class ControlMessage {
         return msg;
     }
 
+    public static ControlMessage createSetCameraTorch(boolean enabled) {
+        ControlMessage msg = new ControlMessage();
+        msg.type = TYPE_SET_CAMERA_TORCH;
+        msg.enabled = enabled;
+        return msg;
+    }
+
     public int getType() {
         return type;
     }
@@ -214,5 +223,9 @@ public final class ControlMessage {
 
     public byte[] getData() {
         return data;
+    }
+
+    public boolean getEnabled() {
+        return enabled;
     }
 }

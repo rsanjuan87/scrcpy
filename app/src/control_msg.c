@@ -157,6 +157,9 @@ sc_control_msg_serialize(const struct sc_control_msg *msg, uint8_t *buf) {
             sc_write16be(&buf[3], msg->uhid_input.size);
             memcpy(&buf[5], msg->uhid_input.data, msg->uhid_input.size);
             return 5 + msg->uhid_input.size;
+        case SC_CONTROL_MSG_TYPE_SET_CAMERA_TORCH:
+            buf[1] = msg->set_camera_torch.enabled ? 1 : 0;
+            return 2;
         case SC_CONTROL_MSG_TYPE_EXPAND_NOTIFICATION_PANEL:
         case SC_CONTROL_MSG_TYPE_EXPAND_SETTINGS_PANEL:
         case SC_CONTROL_MSG_TYPE_COLLAPSE_PANELS:
@@ -273,6 +276,10 @@ sc_control_msg_log(const struct sc_control_msg *msg) {
         }
         case SC_CONTROL_MSG_TYPE_OPEN_HARD_KEYBOARD_SETTINGS:
             LOG_CMSG("open hard keyboard settings");
+            break;
+        case SC_CONTROL_MSG_TYPE_SET_CAMERA_TORCH:
+            LOG_CMSG("%s camera torch",
+                     msg->set_camera_torch.enabled ? "enable" : "disable");
             break;
         default:
             LOG_CMSG("unknown type: %u", (unsigned) msg->type);

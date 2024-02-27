@@ -32,6 +32,7 @@ public class Controller implements AsyncProcessor {
 
     private final Device device;
     private final ControlChannel controlChannel;
+    private final CameraCapture cameraCapture;
     private final CleanUp cleanUp;
     private final DeviceMessageSender sender;
     private final boolean clipboardAutosync;
@@ -46,9 +47,11 @@ public class Controller implements AsyncProcessor {
 
     private boolean keepPowerModeOff;
 
-    public Controller(Device device, ControlChannel controlChannel, CleanUp cleanUp, boolean clipboardAutosync, boolean powerOn) {
+    public Controller(Device device, ControlChannel controlChannel, CameraCapture cameraCapture, CleanUp cleanUp, boolean clipboardAutosync,
+            boolean powerOn) {
         this.device = device;
         this.controlChannel = controlChannel;
+        this.cameraCapture = cameraCapture;
         this.cleanUp = cleanUp;
         this.clipboardAutosync = clipboardAutosync;
         this.powerOn = powerOn;
@@ -145,7 +148,7 @@ public class Controller implements AsyncProcessor {
             // this is expected on close
             return false;
         }
-
+Ln.i("==== msg = " + msg.getType());
         switch (msg.getType()) {
             case ControlMessage.TYPE_INJECT_KEYCODE:
                 if (device.supportsInputEvents()) {
@@ -212,6 +215,10 @@ public class Controller implements AsyncProcessor {
                 break;
             case ControlMessage.TYPE_OPEN_HARD_KEYBOARD_SETTINGS:
                 openHardKeyboardSettings();
+                break;
+            case ControlMessage.TYPE_SET_CAMERA_TORCH:
+                Ln.i("===");
+                cameraCapture.setTorchEnabled(msg.getEnabled());
                 break;
             default:
                 // do nothing

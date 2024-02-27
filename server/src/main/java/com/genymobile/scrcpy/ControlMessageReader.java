@@ -17,6 +17,7 @@ public class ControlMessageReader {
     static final int SET_CLIPBOARD_FIXED_PAYLOAD_LENGTH = 9;
     static final int UHID_CREATE_FIXED_PAYLOAD_LENGTH = 4;
     static final int UHID_INPUT_FIXED_PAYLOAD_LENGTH = 4;
+    static final int CAMERA_TORCH_PAYLOAD_LENGTH = 1;
 
     private static final int MESSAGE_MAX_SIZE = 1 << 18; // 256k
 
@@ -94,6 +95,9 @@ public class ControlMessageReader {
                 break;
             case ControlMessage.TYPE_UHID_INPUT:
                 msg = parseUhidInput();
+                break;
+            case ControlMessage.TYPE_SET_CAMERA_TORCH:
+                msg = parseCameraTorch();
                 break;
             default:
                 Ln.w("Unknown event type: " + type);
@@ -243,6 +247,14 @@ public class ControlMessageReader {
             return null;
         }
         return ControlMessage.createUhidInput(id, data);
+    }
+
+    private ControlMessage parseCameraTorch() {
+        if (buffer.remaining() < CAMERA_TORCH_PAYLOAD_LENGTH) {
+            return null;
+        }
+        boolean enabled = buffer.get() != 0;
+        return ControlMessage.createSetCameraTorch(enabled);
     }
 
     private static Position readPosition(ByteBuffer buffer) {

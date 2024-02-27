@@ -53,6 +53,8 @@ public class CameraCapture extends SurfaceCapture {
 
     private final AtomicBoolean disconnected = new AtomicBoolean();
 
+    private CameraCaptureSession currentSession;
+
     public CameraCapture(String explicitCameraId, CameraFacing cameraFacing, Size explicitSize, int maxSize, CameraAspectRatio aspectRatio, int fps,
             boolean highSpeed) {
         this.explicitCameraId = explicitCameraId;
@@ -196,7 +198,22 @@ public class CameraCapture extends SurfaceCapture {
     public void start(Surface surface) throws IOException {
         try {
             CameraCaptureSession session = createCaptureSession(cameraDevice, surface);
-            CaptureRequest request = createCaptureRequest(surface);
+            CaptureRequest request = createCaptureRequest(surface, false);
+            setRepeatingRequest(session, request);
+            setCurrentSession(session);
+        } catch (CameraAccessException | InterruptedException e) {
+            throw new IOException(e);
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.M)
+    public void setTorchEnabled(boolean enabled) throws IOException {
+        CameraCaptureSession session = getCurrentSession();
+        if (session == null) {
+            return;
+        }
+        try {
+            CaptureRequest request = createCaptureRequest(session.getInputSurface(), enabled);
             setRepeatingRequest(session, request);
         } catch (CameraAccessException | InterruptedException e) {
             throw new IOException(e);
@@ -310,9 +327,12 @@ public class CameraCapture extends SurfaceCapture {
         }
     }
 
-    private CaptureRequest createCaptureRequest(Surface surface) throws CameraAccessException {
+    private CaptureRequest createCaptureRequest(Surface surface, boolean torch) throws CameraAccessException {
         CaptureRequest.Builder requestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
         requestBuilder.addTarget(surface);
+        if (torch) {
+            requestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
+        }
 
         if (fps > 0) {
             requestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(fps, fps));
@@ -347,5 +367,13 @@ public class CameraCapture extends SurfaceCapture {
     @Override
     public boolean isClosed() {
         return disconnected.get();
+    }
+
+    private synchronized void setCurrentSession(CameraCaptureSession session) {
+        currentSession = session;
+    }
+
+    private synchronized CameraCaptureSession getCurrentSession() {
+        return currentSession;
     }
 }

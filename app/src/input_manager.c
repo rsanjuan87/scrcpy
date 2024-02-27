@@ -331,6 +331,19 @@ open_hard_keyboard_settings(struct sc_input_manager *im) {
 }
 
 static void
+set_camera_torch(struct sc_input_manager *im, bool enabled) {
+    assert(im->controller);
+
+    struct sc_control_msg msg;
+    msg.type = SC_CONTROL_MSG_TYPE_SET_CAMERA_TORCH;
+    msg.set_camera_torch.enabled = enabled;
+
+    if (!sc_controller_push_msg(im->controller, &msg)) {
+        LOGW("Could not request setting camera torch");
+    }
+}
+
+static void
 apply_orientation_transform(struct sc_input_manager *im,
                             enum sc_orientation transform) {
     struct sc_screen *screen = im->screen;
@@ -567,6 +580,11 @@ sc_input_manager_process_key(struct sc_input_manager *im,
                         && im->kp && im->kp->hid) {
                     // Only if the current keyboard is hid
                     open_hard_keyboard_settings(im);
+                }
+                return;
+            case SDLK_l:
+                if (control && !repeat && down) {
+                    set_camera_torch(im, !shift);
                 }
                 return;
         }
