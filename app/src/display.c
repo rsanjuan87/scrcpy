@@ -195,9 +195,12 @@ sc_display_create_texture(struct sc_display *display,
             return NULL;
         }
 
-        int64_t texture_id =
-            SDL_GetNumberProperty(props,
-                                  SDL_PROP_TEXTURE_OPENGL_TEXTURE_NUMBER, 0);
+        const char *renderer_name = SDL_GetRendererName(display->renderer);
+        const char *key = !renderer_name || !strcmp(renderer_name, "opengl")
+                        ? SDL_PROP_TEXTURE_OPENGL_TEXTURE_NUMBER
+                        : SDL_PROP_TEXTURE_OPENGLES2_TEXTURE_NUMBER;
+
+        int64_t texture_id = SDL_GetNumberProperty(props, key, 0);
         SDL_DestroyProperties(props);
         if (!texture_id) {
             LOGE("Could not get texture id: %s", SDL_GetError());
