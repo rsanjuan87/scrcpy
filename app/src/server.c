@@ -1120,7 +1120,7 @@ run_server(void *data) {
             snprintf(local_success, sizeof(local_success), "%s/_success.txt", base_tmp);
             char remote_success[PATH_MAX];
             snprintf(remote_success, sizeof(remote_success), "%s/_success.txt", remote_dir);
-            if (!sc_adb_pull(&server->intr, serial, remote_success, local_success, 0)) {
+            if (!sc_adb_pull(&server->intr, serial, remote_success, local_success, SC_ADB_SILENT)) {
                 LOGE("Could not pull success list from device");
             } else {
                     // Read the list of packages
@@ -1238,7 +1238,7 @@ run_server(void *data) {
                                         char local_png[PATH_MAX];
                                         snprintf(local_png, sizeof(local_png), "%s/%s.png", base_tmp, p);
 
-                                        
+
                                         if (sc_adb_pull(&server->intr, serial, remote_png, local_png, 0)) {
                                             // Move to destination
                                             if (!dest_path || dest_is_tmp) {
