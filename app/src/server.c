@@ -2,18 +2,38 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <libavformat/avformat.h>
+#include <SDL2/SDL_platform.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <limits.h>
+#include <unistd.h>
 
 #include "adb/adb.h"
-#include "util/env.h"
-#include "util/file.h"
-#include "util/log.h"
-#include "util/net_intr.h"
-#include "util/process.h"
+#include "adb/adb_tunnel.h"
+#include "compat.h"
+#include "decoder.h"
+#include "events.h"
+#include "icon.h"
+#include "input_manager.h"
+#include "options.h"
+#include "recorder.h"
+#include "screen.h"
+#include "server.h"
 #include "util/str.h"
+#include "util/file.h"
+#include "util/env.h"
+#include "util/net_intr.h"
+#include "util/log.h"
+#include "util/net.h"
+#include "util/process_intr.h"
+#include "util/str.h"
+
+// moved to util/str.c and util/file.c
 
 #define SC_SERVER_FILENAME "scrcpy-server"
 
@@ -431,6 +451,10 @@ execute_server(struct sc_server *server,
     }
     if (params->list & SC_OPTION_LIST_APPS) {
         ADD_PARAM("list_apps=true");
+    }
+    if (params->get_app_icon) {
+        VALIDATE_STRING(params->get_app_icon);
+        ADD_PARAM("get_app_icon=%s", params->get_app_icon);
     }
 
 #undef ADD_PARAM
@@ -1035,13 +1059,184 @@ run_server(void *data) {
 
     // If --list-* is passed, then the server just prints the requested data
     // then exits.
-    if (params->list) {
+    if (params->list || params->get_app_icon) {
         sc_pid pid = execute_server(server, params);
         if (pid == SC_PROCESS_NONE) {
             goto error_connection_failed;
         }
         sc_process_wait(pid, NULL); // ignore exit code
         sc_process_close(pid);
+        // If requesting app icons, only pull the icons extracted by this operation
+        if (params->get_app_icon) {
+            const char *serial = server->serial;
+            assert(serial);
+            const char *remote_dir = "/data/local/tmp/scrcpy/icons";
+
+            // Build deterministic local temp dir: <TMPDIR>/scrcpy/icons/<DEVICE_ID>
+            char base_tmp[PATH_MAX];
+            const char *sys_tmp = sc_get_env("TMPDIR");
+            if (!sys_tmp || !*sys_tmp) {
+                sys_tmp = "/tmp";
+            }
+            snprintf(base_tmp, sizeof(base_tmp), "%s/scrcpy/icons/%s", sys_tmp, serial);
+            sc_file_mkdirs(base_tmp);
+            {
+            // Pull only the success list
+            char local_success[PATH_MAX];
+            snprintf(local_success, sizeof(local_success), "%s/_success.txt", base_tmp);
+            char remote_success[PATH_MAX];
+            snprintf(remote_success, sizeof(remote_success), "%s/_success.txt", remote_dir);
+            if (!sc_adb_pull(&server->intr, serial, remote_success, local_success, 0)) {
+                LOGE("Could not pull success list from device");
+            } else {
+                    // Read the list of packages
+                    FILE *f = fopen(local_success, "rb");
+                    if (!f) {
+                        LOGE("Could not open success list: %s", local_success);
+                    } else {
+                        fseek(f, 0, SEEK_END);
+                        long sz = ftell(f);
+                        fseek(f, 0, SEEK_SET);
+                        if (sz > 0 && sz < 1024 * 1024) {
+                            char *buf = malloc((size_t)sz + 1);
+                            if (!buf) {
+                                LOG_OOM();
+                            } else {
+                                size_t rd = fread(buf, 1, (size_t)sz, f);
+                                buf[rd] = '\0';
+
+                                // Determine destination rules from get_app_icon value
+                                const char *spec = params->get_app_icon;
+                                // if multiple packages, only the first token may contain :path; accept on first
+                                const char *colon = strchr(spec, ':');
+                                char *dest_path = NULL;
+                                if (colon && colon[1] != '\0') {
+                                    dest_path = sc_str_dup(colon + 1);
+                                }
+                                // detect if request is for "all"
+                                bool is_all = false;
+                                const char *comma = strchr(spec, ',');
+                                size_t first_len = (size_t) (colon && (!comma || colon < comma)
+                                                             ? (size_t)(colon - spec)
+                                                             : (comma ? (size_t)(comma - spec)
+                                                                     : strlen(spec)));
+                                if (first_len == 3 && strncmp(spec, "all", 3) == 0) {
+                                    is_all = true;
+                                }
+
+                                // Destination handling per spec:
+                                // - existing dir: place <package>.png inside
+                                // - existing file: overwrite that file
+                                // - non-existing: create parent dir and use last path segment as filename
+                                bool dest_exists_dir = false;
+                                bool dest_exists_file = false;
+                                char *dest_parent = NULL; // may be NULL
+                                const char *dest_basename = NULL; // used when non-existing path
+                                bool dest_is_tmp = false; // if true, keep files in temp
+                                struct stat st;
+                                if (dest_path) {
+                                    // If destination equals the temp base or the system tmp dir, do not move
+                                    if (!strcmp(dest_path, "tmpDir")) {
+                                        dest_is_tmp = true;
+                                    }
+                                    if (!stat(dest_path, &st)) {
+                                        dest_exists_dir = S_ISDIR(st.st_mode);
+                                        dest_exists_file = !dest_exists_dir;
+                                    } else {
+                                        if (is_all) {
+                                            // For "all", treat dest_path as a directory to create
+                                            sc_file_mkdirs(dest_path);
+                                            dest_exists_dir = true;
+                                        } else {
+                                            // Split into parent and basename
+                                            char *copy = sc_str_dup(dest_path);
+                                            char *slash = strrchr(copy, '/');
+                                            if (slash) {
+                                                *slash = '\0';
+                                                dest_parent = sc_str_dup(copy);
+                                                *slash = '/';
+                                                dest_basename = slash + 1;
+                                                // create parent dirs
+                                                sc_file_mkdirs(dest_parent);
+                                            } else {
+                                                // no parent: use CWD and whole dest_path as basename
+                                                dest_parent = NULL;
+                                                dest_basename = dest_path;
+                                            }
+                                            free(copy);
+                                        }
+                                    }
+                                }
+
+                                // Iterate CSV list
+                                char *p = buf;
+                                while (p && *p) {
+                                    // find token end
+                                    char *comma = strchr(p, ',');
+                                    if (comma) *comma = '\0';
+
+                                    // trim spaces/newlines
+                                    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') ++p;
+                                    char *end = p + strlen(p);
+                                    while (end > p && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r')) {
+                                        *--end = '\0';
+                                    }
+
+                                    if (*p) {
+                                        // pull single png
+                                        char remote_png[PATH_MAX];
+                                        snprintf(remote_png, sizeof(remote_png), "%s/%s.png", remote_dir, p);
+                                        char local_png[PATH_MAX];
+                                        snprintf(local_png, sizeof(local_png), "%s/%s.png", base_tmp, p);
+                                        if (sc_adb_pull(&server->intr, serial, remote_png, local_png, 0)) {
+                                            // Move to destination
+                                            if (!dest_path || dest_is_tmp) {
+                                                // No path provided: use CWD/<package>.png
+                                                if (!dest_is_tmp) {
+                                                    char dst_path[PATH_MAX];
+                                                    snprintf(dst_path, sizeof(dst_path), "./%s.png", p);
+                                                    rename(local_png, dst_path);
+                                                }
+                                            } else if (is_all) {
+                                                // For "all": always place in directory dest_path
+                                                char dst_path[PATH_MAX];
+                                                snprintf(dst_path, sizeof(dst_path), "%s/%s.png", dest_path, p);
+                                                rename(local_png, dst_path);
+                                            } else if (dest_exists_dir) {
+                                                // Existing directory: <dir>/<package>.png
+                                                char dst_path[PATH_MAX];
+                                                snprintf(dst_path, sizeof(dst_path), "%s/%s.png", dest_path, p);
+                                                rename(local_png, dst_path);
+                                            } else if (dest_exists_file) {
+                                                // Existing file: overwrite
+                                                rename(local_png, dest_path);
+                                            } else {
+                                                // Non-existing path: parent ensured above; use last segment as filename
+                                                char dst_path[PATH_MAX];
+                                                if (dest_parent) {
+                                                    snprintf(dst_path, sizeof(dst_path), "%s/%s", dest_parent, dest_basename);
+                                                } else {
+                                                    snprintf(dst_path, sizeof(dst_path), "./%s", dest_basename);
+                                                }
+                                                rename(local_png, dst_path);
+                                            }
+                                        }
+                                    }
+
+                                    if (!comma) break;
+                                    p = comma + 1;
+                                }
+
+                                free(dest_parent);
+                                free(dest_path);
+                                free(buf);
+                            }
+                        }
+                        fclose(f);
+                    }
+                }
+            }
+        }
         // Wake up await_for_server()
         server->cbs->on_connected(server, server->cbs_userdata);
         return 0;

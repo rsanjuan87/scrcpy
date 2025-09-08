@@ -107,6 +107,7 @@ enum {
     OPT_GAMEPAD,
     OPT_NEW_DISPLAY,
     OPT_LIST_APPS,
+    OPT_GET_APP_ICON,
     OPT_START_APP,
     OPT_SCREEN_OFF_TIMEOUT,
     OPT_CAPTURE_ORIENTATION,
@@ -510,6 +511,12 @@ static const struct sc_option options[] = {
         .longopt_id = OPT_LIST_APPS,
         .longopt = "list-apps",
         .text = "List Android apps installed on the device.",
+    },
+    {
+        .longopt_id = OPT_GET_APP_ICON,
+        .longopt = "get-app-icon",
+        .argdesc = "package_name",
+        .text = "Get the icon of an Android app installed on the device.",
     },
     {
         .longopt_id = OPT_LIST_CAMERAS,
@@ -2720,6 +2727,9 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                 break;
             case OPT_LIST_APPS:
                 opts->list |= SC_OPTION_LIST_APPS;
+                break;
+            case OPT_GET_APP_ICON:
+                opts->get_app_icon = optarg;
                 break;
             case OPT_REQUIRE_AUDIO:
                 opts->require_audio = true;

@@ -46,4 +46,10 @@ sc_file_get_local_path(const char *name);
 bool
 sc_file_is_regular(const char *path);
 
+/**
+ * Recursively create directories for a given path (mkdir -p behavior).
+ */
+void
+sc_file_mkdirs(const char *path);
+
 #endif

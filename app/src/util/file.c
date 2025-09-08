@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
+#include <sys/stat.h>
 
 #include "util/log.h"
 
@@ -44,5 +46,23 @@ sc_file_get_local_path(const char *name) {
     free(executable_path);
 
     return file_path;
+}
+
+void
+sc_file_mkdirs(const char *path) {
+    char buf[PATH_MAX];
+    size_t n = strlen(path);
+    if (n >= sizeof(buf)) {
+        return;
+    }
+    memcpy(buf, path, n + 1);
+    for (char *p = buf + 1; *p; ++p) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(buf, 0755);
+            *p = '/';
+        }
+    }
+    mkdir(buf, 0755);
 }
 
