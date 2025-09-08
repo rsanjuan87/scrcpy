@@ -453,8 +453,42 @@ execute_server(struct sc_server *server,
         ADD_PARAM("list_apps=true");
     }
     if (params->get_app_icon) {
-        VALIDATE_STRING(params->get_app_icon);
-        ADD_PARAM("get_app_icon=%s", params->get_app_icon);
+        // Strip any ":path" from the first token to avoid special chars like ~ or $
+        const char *spec = params->get_app_icon;
+        const char *comma = strchr(spec, ',');
+        const char *colon = strchr(spec, ':');
+        char *sanitized = NULL;
+        if (colon && (!comma || colon < comma)) {
+            size_t first_len = (size_t)(colon - spec);
+            if (comma) {
+                // keep ",..." suffix after the first token
+                size_t tail_len = strlen(comma);
+                sanitized = malloc(first_len + tail_len + 1);
+                if (!sanitized) {
+                    LOG_OOM();
+                    goto end;
+                }
+                memcpy(sanitized, spec, first_len);
+                memcpy(sanitized + first_len, comma, tail_len + 1);
+            } else {
+                sanitized = malloc(first_len + 1);
+                if (!sanitized) {
+                    LOG_OOM();
+                    goto end;
+                }
+                memcpy(sanitized, spec, first_len);
+                sanitized[first_len] = '\0';
+            }
+        } else {
+            sanitized = sc_str_dup(spec);
+            if (!sanitized) {
+                LOG_OOM();
+                goto end;
+            }
+        }
+        VALIDATE_STRING(sanitized);
+        ADD_PARAM("get_app_icon=%s", sanitized);
+        free(sanitized);
     }
 
 #undef ADD_PARAM
@@ -1111,11 +1145,17 @@ run_server(void *data) {
                                 const char *colon = strchr(spec, ':');
                                 char *dest_path = NULL;
                                 if (colon && colon[1] != '\0') {
-                                    dest_path = sc_str_dup(colon + 1);
+                                    char *raw = sc_str_dup(colon + 1);
+                                    if (raw) {
+                                        char *expanded = sc_file_expand_path(raw);
+                                        free(raw);
+                                        dest_path = expanded ? expanded : NULL;
+                                    }
                                 }
-                                // detect if request is for "all"
+                                // detect if request is for "all" or multiple packages
                                 bool is_all = false;
                                 const char *comma = strchr(spec, ',');
+                                bool is_multi = comma != NULL;
                                 size_t first_len = (size_t) (colon && (!comma || colon < comma)
                                                              ? (size_t)(colon - spec)
                                                              : (comma ? (size_t)(comma - spec)
@@ -1139,13 +1179,21 @@ run_server(void *data) {
                                     if (!strcmp(dest_path, "tmpDir")) {
                                         dest_is_tmp = true;
                                     }
-                                    if (!stat(dest_path, &st)) {
+                                    size_t dlen = strlen(dest_path);
+                                    bool has_trailing_slash = dlen > 0 && dest_path[dlen - 1] == '/';
+                                    if (has_trailing_slash) {
+                                        // Treat as directory explicitly
+                                        sc_file_mkdirs(dest_path);
+                                        dest_exists_dir = true;
+                                        dest_exists_file = false;
+                                    } else if (dest_path && !stat(dest_path, &st)) {
                                         dest_exists_dir = S_ISDIR(st.st_mode);
                                         dest_exists_file = !dest_exists_dir;
                                     } else {
-                                        if (is_all) {
+                                        // Non-existing path
+                                        if (is_all || is_multi) {
                                             // For "all", treat dest_path as a directory to create
-                                            sc_file_mkdirs(dest_path);
+                                            if (dest_path) sc_file_mkdirs(dest_path);
                                             dest_exists_dir = true;
                                         } else {
                                             // Split into parent and basename
@@ -1159,11 +1207,12 @@ run_server(void *data) {
                                                 // create parent dirs
                                                 sc_file_mkdirs(dest_parent);
                                             } else {
+                                                //NO WIL COME HERE BECAUSE OF EXPANDING
                                                 // no parent: use CWD and whole dest_path as basename
                                                 dest_parent = NULL;
                                                 dest_basename = dest_path;
                                             }
-                                            free(copy);
+                                            //free(copy);
                                         }
                                     }
                                 }
@@ -1188,6 +1237,8 @@ run_server(void *data) {
                                         snprintf(remote_png, sizeof(remote_png), "%s/%s.png", remote_dir, p);
                                         char local_png[PATH_MAX];
                                         snprintf(local_png, sizeof(local_png), "%s/%s.png", base_tmp, p);
+
+                                        
                                         if (sc_adb_pull(&server->intr, serial, remote_png, local_png, 0)) {
                                             // Move to destination
                                             if (!dest_path || dest_is_tmp) {
@@ -1196,20 +1247,24 @@ run_server(void *data) {
                                                     char dst_path[PATH_MAX];
                                                     snprintf(dst_path, sizeof(dst_path), "./%s.png", p);
                                                     rename(local_png, dst_path);
+                                                    printf("Renamed to %s\n", dst_path);
                                                 }
-                                            } else if (is_all) {
+                                            } else if (is_all || is_multi) {
                                                 // For "all": always place in directory dest_path
                                                 char dst_path[PATH_MAX];
                                                 snprintf(dst_path, sizeof(dst_path), "%s/%s.png", dest_path, p);
                                                 rename(local_png, dst_path);
+                                                printf("Renamed to %s\n", dst_path);
                                             } else if (dest_exists_dir) {
                                                 // Existing directory: <dir>/<package>.png
                                                 char dst_path[PATH_MAX];
                                                 snprintf(dst_path, sizeof(dst_path), "%s/%s.png", dest_path, p);
                                                 rename(local_png, dst_path);
+                                                printf("Renamed to %s\n", dst_path);
                                             } else if (dest_exists_file) {
                                                 // Existing file: overwrite
                                                 rename(local_png, dest_path);
+                                                printf("Renamed to %s\n", dest_path);
                                             } else {
                                                 // Non-existing path: parent ensured above; use last segment as filename
                                                 char dst_path[PATH_MAX];
@@ -1219,6 +1274,7 @@ run_server(void *data) {
                                                     snprintf(dst_path, sizeof(dst_path), "./%s", dest_basename);
                                                 }
                                                 rename(local_png, dst_path);
+                                                printf("Renamed to %s\n", dst_path);
                                             }
                                         }
                                     }

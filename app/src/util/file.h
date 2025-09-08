@@ -52,4 +52,17 @@ sc_file_is_regular(const char *path);
 void
 sc_file_mkdirs(const char *path);
 
+/**
+ * Expand a filesystem path:
+ * - Expand leading '~' to $HOME
+ * - Expand environment variables $VAR and ${VAR}
+ * - If relative, prepend current working directory (POSIX)
+ *
+ * Returns a newly-allocated string on success (caller must free), or NULL on
+ * allocation error. If expansion needs variables that are unset, they are
+ * replaced by an empty string.
+ */
+char *
+sc_file_expand_path(const char *path);
+
 #endif
