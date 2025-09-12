@@ -327,6 +327,8 @@ struct scrcpy_options {
     const char *new_display; // [<width>x<height>][/<dpi>] parsed by the server
     const char *start_app;
     const char *get_app_icon; // package name for app icon
+    bool exit_on_app_close;
+    bool stop_app;
     bool vd_destroy_content;
     bool vd_system_decorations;
 };
