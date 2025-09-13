@@ -805,6 +805,7 @@ aoa_complete:
         // Check if new_display is resizable (contains :r)
         bool resizable_new_display = false;
         float resolution_factor = 1.0f;
+        bool auto_resolution_factor = false;
         
         if (options->new_display) {
             const char *r_pos = strstr(options->new_display, ":r");
@@ -824,10 +825,49 @@ aoa_complete:
                         // Prevent too large factors
                         resolution_factor = 10.0f;
                     }
+                } else {
+                    // No explicit resolution factor provided, will calculate automatically
+                    auto_resolution_factor = true;
+                    LOGI("No resolution factor specified, will calculate automatically");
                 }
             }
         }
 
+        // Si se solicitó cálculo automático del factor de resolución, calcularlo basado en el tamaño de la pantalla principal
+        if (auto_resolution_factor && resizable_new_display) {
+            // Obtener el tamaño de la pantalla principal
+            SDL_Rect display_bounds;
+            if (SDL_GetDisplayUsableBounds(0, &display_bounds) == 0) {
+                // Calcular el factor de resolución basado en la relación entre el tamaño de la pantalla
+                // y el tamaño de la ventana solicitado
+                int display_width = display_bounds.w;
+                int display_height = display_bounds.h;
+                
+                // Usar el tamaño de ventana solicitado o un valor predeterminado
+                int window_width = options->window_width ? options->window_width : display_width / 2;
+                int window_height = options->window_height ? options->window_height : display_height / 2;
+                
+                // Calcular el factor como la relación entre el tamaño de la pantalla y el tamaño de la ventana
+                // Usar el menor de los factores para evitar que la ventana sea más grande que la pantalla
+                float width_factor = (float)display_width / window_width;
+                float height_factor = (float)display_height / window_height;
+                resolution_factor = width_factor < height_factor ? width_factor : height_factor;
+                
+                // Limitar el factor entre 0.1 y 10.0
+                if (resolution_factor < 0.1f) {
+                    resolution_factor = 0.1f;
+                } else if (resolution_factor > 10.0f) {
+                    resolution_factor = 10.0f;
+                }
+                
+                LOGI("Calculated automatic resolution factor: %.2f (display: %dx%d, window: %dx%d)", 
+                     resolution_factor, display_width, display_height, window_width, window_height);
+            } else {
+                LOGW("Could not get display bounds, using default resolution factor: 1.0");
+                resolution_factor = 1.0f;
+            }
+        }
+        
         struct sc_screen_params screen_params = {
             .video = options->video_playback,
             .controller = controller,
