@@ -803,7 +803,30 @@ aoa_complete:
             options->window_title ? options->window_title : info->device_name;
 
         // Check if new_display is resizable (contains :r)
-        bool resizable_new_display = options->new_display && strstr(options->new_display, ":r") != NULL;
+        bool resizable_new_display = false;
+        float resolution_factor = 1.0f;
+        
+        if (options->new_display) {
+            const char *r_pos = strstr(options->new_display, ":r");
+            if (r_pos) {
+                resizable_new_display = true;
+                
+                // Check if there's a resolution factor after ":r"
+                const char *factor_start = r_pos + 2; // Skip ":r"
+                if (*factor_start && (*factor_start >= '0' && *factor_start <= '9')) {
+                    // Parse the resolution factor
+                    char *end;
+                    resolution_factor = strtof(factor_start, &end);
+                    if (resolution_factor <= 0.1f) {
+                        // Prevent too small factors
+                        resolution_factor = 0.1f;
+                    } else if (resolution_factor > 10.0f) {
+                        // Prevent too large factors
+                        resolution_factor = 10.0f;
+                    }
+                }
+            }
+        }
 
         struct sc_screen_params screen_params = {
             .video = options->video_playback,
@@ -828,6 +851,7 @@ aoa_complete:
             .fullscreen = options->fullscreen,
             .start_fps_counter = options->start_fps_counter,
             .resizable_new_display = resizable_new_display,
+            .resolution_factor = resolution_factor,
         };
 
         if (!sc_screen_init(&s->screen, &screen_params)) {

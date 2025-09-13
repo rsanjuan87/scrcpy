@@ -11,6 +11,17 @@ scrcpy --new-display         # use the main display size and density
 scrcpy --new-display=/240    # use the main display size and 240 dpi
 ```
 
+You can make the display resizable by adding `:r` to the option. Additionally, you can specify a resolution factor after `:r` to scale the display size:
+
+```bash
+scrcpy --new-display=1920x1080:r           # resizable display
+scrcpy --new-display=1920x1080:r2.0        # resizable with 2x resolution
+scrcpy --new-display=:r0.5                 # resizable with half resolution
+scrcpy --new-display=/420:r1.5             # resizable with 1.5x resolution
+```
+
+The resolution factor must be between 0.1 and 10.0.
+
 The new virtual display is destroyed on exit.
 
 ## Start app

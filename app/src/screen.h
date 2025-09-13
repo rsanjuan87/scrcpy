@@ -85,6 +85,7 @@ struct sc_screen {
     AVFrame *resume_frame;
 
     bool resizable_new_display;
+    float resolution_factor; // Factor to multiply window size in resizable mode
     bool initial_setup; // track if we're in initial window setup phase
     bool content_driven_resize; // track if we're in content-driven resize (to avoid feedback loop)
     uint64_t last_resize_time; // timestamp of last resize to implement debouncing
@@ -120,6 +121,7 @@ struct sc_screen_params {
     bool fullscreen;
     bool start_fps_counter;
     bool resizable_new_display;
+    float resolution_factor; // Factor to multiply window size in resizable mode
 };
 
 // initialize screen, create window, renderer and texture (window is hidden)

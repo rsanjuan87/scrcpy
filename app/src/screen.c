@@ -355,6 +355,9 @@ sc_screen_init(struct sc_screen *screen,
     screen->req.start_fps_counter = params->start_fps_counter;
 
     screen->resizable_new_display = params->resizable_new_display;
+    screen->resolution_factor = params->resolution_factor;
+    
+    LOGI("Resolution factor: %.2f", screen->resolution_factor);
 
     bool ok = sc_frame_buffer_init(&screen->fb);
     if (!ok) {
@@ -957,14 +960,30 @@ sc_screen_send_resize_display(struct sc_screen *screen, int width, int height) {
         LOGD("Display size too small, ignoring resize: %dx%d", width, height);
         return;
     }
+    
+    // Apply resolution factor if in resizable mode
+    int adjusted_width = width;
+    int adjusted_height = height;
+    
+    if (screen->resizable_new_display && screen->resolution_factor != 1.0f) {
+        adjusted_width = (int)(width * screen->resolution_factor);
+        adjusted_height = (int)(height * screen->resolution_factor);
+        
+        // Ensure minimum size
+        if (adjusted_width < 1) adjusted_width = 1;
+        if (adjusted_height < 1) adjusted_height = 1;
+        
+        LOGD("Applying resolution factor %.2f: %dx%d -> %dx%d", 
+             screen->resolution_factor, width, height, adjusted_width, adjusted_height);
+    }
 
     struct sc_control_msg msg;
     msg.type = SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY;
-    msg.resize_display.width = (uint16_t) width;
-    msg.resize_display.height = (uint16_t) height;
+    msg.resize_display.width = (uint16_t) adjusted_width;
+    msg.resize_display.height = (uint16_t) adjusted_height;
 
     if (!sc_controller_push_msg(screen->im.controller, &msg)) {
-        LOGW("Could not request display resize to %dx%d", width, height);
+        LOGW("Could not request display resize to %dx%d", adjusted_width, adjusted_height);
     }
 }
 
@@ -1060,6 +1079,7 @@ static Uint32 resize_timer_callback(Uint32 interval, void *param) {
     // Round to multiple of 8 to match server-side rounding and avoid quality degradation
     int rounded_w = (width + 4) & ~7;  // Round to nearest multiple of 8
     int rounded_h = (height + 4) & ~7;  // Round to nearest multiple of 8
+    
     LOGD("[RESIZE_FINISHED] Notifying display resize: %dx%d (rounded from %dx%d)", rounded_w, rounded_h, width, height);
     sc_screen_send_resize_display(screen, rounded_w, rounded_h);
     return 0;

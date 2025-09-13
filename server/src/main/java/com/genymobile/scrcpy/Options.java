@@ -593,14 +593,34 @@ public class Options {
         //  - "<width>x<height>:r"
         //  - "/<dpi>:r"
         //  - ":r"
+        //  - "<width>x<height>/<dpi>:r<factor>"
+        //  - "<width>x<height>:r<factor>"
+        //  - "/<dpi>:r<factor>"
+        //  - ":r<factor>"
         if (newDisplay.isEmpty()) {
             return new NewDisplay();
         }
 
-        // Check for resizable flag
-        boolean resizable = newDisplay.endsWith(":r");
-        if (resizable) {
-            newDisplay = newDisplay.substring(0, newDisplay.length() - 2);
+        // Check for resizable flag and resolution factor
+        boolean resizable = false;
+        float resolutionFactor = 1.0f;
+        int rIndex = newDisplay.indexOf(":r");
+        if (rIndex >= 0) {
+            resizable = true;
+            String factorStr = newDisplay.substring(rIndex + 2);
+            if (!factorStr.isEmpty()) {
+                try {
+                    resolutionFactor = Float.parseFloat(factorStr);
+                    if (resolutionFactor <= 0.1f) {
+                        resolutionFactor = 0.1f;
+                    } else if (resolutionFactor > 10.0f) {
+                        resolutionFactor = 10.0f;
+                    }
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid resolution factor: " + factorStr);
+                }
+            }
+            newDisplay = newDisplay.substring(0, rIndex);
         }
 
         String[] tokens = newDisplay.split("/");
@@ -622,7 +642,7 @@ public class Options {
             dpi = 0;
         }
 
-        return new NewDisplay(size, dpi, resizable);
+        return new NewDisplay(size, dpi, resizable, resolutionFactor);
     }
 
     private static Pair<Orientation.Lock, Orientation> parseCaptureOrientation(String value) {
