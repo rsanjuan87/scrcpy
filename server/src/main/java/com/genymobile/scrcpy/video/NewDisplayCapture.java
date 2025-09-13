@@ -295,14 +295,19 @@ public class NewDisplayCapture extends SurfaceCapture {
             // Ensure DPI is within valid range (Android requires DPI >= 1)
             newDpi = Math.max(1, newDpi);
 
-            // Resize the virtual display
-            virtualDisplay.resize(newWidth, newHeight, newDpi);
+            // Round to multiple of 8 to avoid quality degradation from encoding constraints
+            Size roundedSize = new Size(newWidth, newHeight).round8();
+            int roundedWidth = roundedSize.getWidth();
+            int roundedHeight = roundedSize.getHeight();
+
+            // Resize the virtual display with rounded dimensions
+            virtualDisplay.resize(roundedWidth, roundedHeight, newDpi);
 
             // Update our internal state
-            displaySize = new Size(newWidth, newHeight);
+            displaySize = new Size(roundedWidth, roundedHeight);
             dpi = newDpi;
 
-            Ln.i("Resized display to: " + newWidth + "x" + newHeight + "/" + newDpi);
+            Ln.i("Resized display to: " + roundedWidth + "x" + roundedHeight + "/" + newDpi + " (rounded from " + newWidth + "x" + newHeight + ")");
 
             // Trigger a reconfiguration
             invalidate();

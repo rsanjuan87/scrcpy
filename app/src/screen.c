@@ -251,45 +251,8 @@ event_watcher(void *data, SDL_Event *event) {
     assert(screen->video);
     if (event->type == SDL_WINDOWEVENT
             && event->window.event == SDL_WINDOWEVENT_RESIZED) {
-        int width = event->window.data1;
-        int height = event->window.data2;
-        if (screen->resizable_new_display) {
-            if ((!sizes_are_close(width, screen->last_window_width, 2) || !sizes_are_close(height, screen->last_window_height, 2)) &&
-                !screen->initial_setup && !screen->content_driven_resize) {
-                screen->last_window_width = width;
-                screen->last_window_height = height;
-                // --- Resize diferido ---
-                screen->pending_resize_width = width;
-                screen->pending_resize_height = height;
-                if (screen->resize_timer) {
-                    SDL_RemoveTimer(screen->resize_timer);
-                }
-                screen->resize_timer = SDL_AddTimer(RESIZE_FINISHED_DELAY, resize_timer_callback, screen);
-                // --- Fin resize diferido ---
-                sc_screen_render(screen, true);
-            } else if (screen->initial_setup) {
-                LOGD("[RESIZED] Initial setup resize ignored: %dx%d", width, height);
-                sc_screen_render(screen, true);
-            } else if (screen->content_driven_resize) {
-                LOGD("[RESIZED] Content-driven resize ignored: %dx%d", width, height);
-                sc_screen_render(screen, true);
-            }
-        } else {
-            // Modo normal
-            if (screen->content_driven_resize) {
-                LOGD("[RESIZED] Content-driven resize, solo render");
-                sc_screen_render(screen, true);
-                return 0;
-            }
-            if (screen->initial_setup) {
-                LOGD("[RESIZED] Initial setup, solo render");
-                sc_screen_render(screen, true);
-                return 0;
-            }
-            LOGD("[RESIZED] User resize detected: %dx%d", width, height);
-            sc_screen_render(screen, true);
-            sc_screen_send_resize_display(screen, width, height);
-        }
+        // Only handle rendering for the workaround, resize logic should be handled elsewhere
+        sc_screen_render(screen, true);
     }
     return 0;
 }
@@ -924,8 +887,18 @@ sc_screen_handle_event(struct sc_screen *screen, const SDL_Event *event) {
                             screen->last_window_width = w;
                             screen->last_window_height = h;
                             // --- Resize diferido ---
-                            screen->pending_resize_width = w;
-                            screen->pending_resize_height = h;
+                            // Round to multiple of 8 to match server-side rounding and avoid quality degradation
+                            int rounded_w = (w + 4) & ~7;  // Round to nearest multiple of 8
+                            int rounded_h = (h + 4) & ~7;  // Round to nearest multiple of 8
+                            
+                            // Resize window to rounded dimensions to maintain quality
+                            if (rounded_w != w || rounded_h != h) {
+                                SDL_SetWindowSize(screen->window, rounded_w, rounded_h);
+                                LOGD("Window resized to rounded dimensions: %dx%d (from %dx%d)", rounded_w, rounded_h, w, h);
+                            }
+                            
+                            screen->pending_resize_width = rounded_w;
+                            screen->pending_resize_height = rounded_h;
                             if (screen->resize_timer) {
                                 SDL_RemoveTimer(screen->resize_timer);
                             }
@@ -1084,7 +1057,10 @@ static Uint32 resize_timer_callback(Uint32 interval, void *param) {
         LOGD("Ignoring invalid resize: %dx%d", width, height);
         return 0;
     }
-    LOGD("[RESIZE_FINISHED] Notifying display resize: %dx%d", width, height);
-    sc_screen_send_resize_display(screen, width, height);
+    // Round to multiple of 8 to match server-side rounding and avoid quality degradation
+    int rounded_w = (width + 4) & ~7;  // Round to nearest multiple of 8
+    int rounded_h = (height + 4) & ~7;  // Round to nearest multiple of 8
+    LOGD("[RESIZE_FINISHED] Notifying display resize: %dx%d (rounded from %dx%d)", rounded_w, rounded_h, width, height);
+    sc_screen_send_resize_display(screen, rounded_w, rounded_h);
     return 0;
 }

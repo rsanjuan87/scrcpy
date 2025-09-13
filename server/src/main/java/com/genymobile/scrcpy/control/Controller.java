@@ -313,6 +313,7 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
                 break;
             case ControlMessage.TYPE_ROTATE_DEVICE:
                 Device.rotateDevice(getActionDisplayId());
+                // The virtual display resize will be handled by the main display monitor
                 break;
             case ControlMessage.TYPE_UHID_CREATE:
                 getUhidManager().open(msg.getId(), msg.getVendorId(), msg.getProductId(), msg.getText(), msg.getData());
