@@ -973,6 +973,22 @@ sc_screen_send_resize_display(struct sc_screen *screen, int width, int height) {
         if (adjusted_width < 1) adjusted_width = 1;
         if (adjusted_height < 1) adjusted_height = 1;
         
+        // Ensure maximum size to avoid encoder issues
+        // Most Android devices support up to 4K resolution for encoding
+        const int MAX_DIMENSION = 2048; // Safe limit for most devices
+        if (adjusted_width > MAX_DIMENSION || adjusted_height > MAX_DIMENSION) {
+            // Scale down proportionally to fit within limits
+            float scale = 1.0f;
+            if (adjusted_width > adjusted_height) {
+                scale = (float)MAX_DIMENSION / adjusted_width;
+            } else {
+                scale = (float)MAX_DIMENSION / adjusted_height;
+            }
+            adjusted_width = (int)(adjusted_width * scale);
+            adjusted_height = (int)(adjusted_height * scale);
+            LOGW("Limiting dimensions to %dx%d to avoid encoder issues", adjusted_width, adjusted_height);
+        }
+        
         LOGD("Applying resolution factor %.2f: %dx%d -> %dx%d", 
              screen->resolution_factor, width, height, adjusted_width, adjusted_height);
     }
