@@ -605,8 +605,18 @@ public class Options {
         //  - "<width>x<height>/<dpi>"
         //  - "<width>x<height>"
         //  - "/<dpi>"
+        //  - "<width>x<height>/<dpi>:r"
+        //  - "<width>x<height>:r"
+        //  - "/<dpi>:r"
+        //  - ":r"
         if (newDisplay.isEmpty()) {
             return new NewDisplay();
+        }
+
+        // Check for resizable flag
+        boolean resizable = newDisplay.endsWith(":r");
+        if (resizable) {
+            newDisplay = newDisplay.substring(0, newDisplay.length() - 2);
         }
 
         String[] tokens = newDisplay.split("/");
@@ -628,7 +638,7 @@ public class Options {
             dpi = 0;
         }
 
-        return new NewDisplay(size, dpi);
+        return new NewDisplay(size, dpi, resizable);
     }
 
     private static Pair<Orientation.Lock, Orientation> parseCaptureOrientation(String value) {

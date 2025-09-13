@@ -49,7 +49,7 @@ public class NewDisplayCapture extends SurfaceCapture {
     private Size mainDisplaySize;
     private int mainDisplayDpi;
     private int maxSize;
-    private int displayImePolicy;
+    private final int displayImePolicy;
     private final Rect crop;
     private final boolean captureOrientationLocked;
     private final Orientation captureOrientation;
@@ -63,6 +63,7 @@ public class NewDisplayCapture extends SurfaceCapture {
     private Size physicalSize; // the physical size of the display (without rotation)
 
     private int dpi;
+    private final boolean resizable;
 
     public NewDisplayCapture(VirtualDisplayListener vdListener, Options options) {
         this.vdListener = vdListener;
@@ -78,6 +79,7 @@ public class NewDisplayCapture extends SurfaceCapture {
         this.angle = options.getAngle();
         this.vdDestroyContent = options.getVDDestroyContent();
         this.vdSystemDecorations = options.getVDSystemDecorations();
+        this.resizable = newDisplay.isResizable();
     }
 
     @Override
@@ -197,7 +199,11 @@ public class NewDisplayCapture extends SurfaceCapture {
                 ServiceManager.getWindowManager().setDisplayImePolicy(virtualDisplayId, displayImePolicy);
             }
 
-            displaySizeMonitor.start(virtualDisplayId, this::invalidate);
+            // Only start display size monitoring for non-resizable displays
+            // For resizable displays, we control the resizing manually from the client
+            if (!resizable) {
+                displaySizeMonitor.start(virtualDisplayId, this::invalidate);
+            }
         } catch (Exception e) {
             Ln.e("Could not create display", e);
             throw new AssertionError("Could not create display");
@@ -263,5 +269,49 @@ public class NewDisplayCapture extends SurfaceCapture {
     @Override
     public void requestInvalidate() {
         invalidate();
+    }
+
+    public void resizeDisplay(int newWidth, int newHeight) {
+        if (!resizable || virtualDisplay == null) {
+            return;
+        }
+
+        // Validate minimum size constraints
+        if (newWidth < 1 || newHeight < 1) {
+            Ln.w("Display size too small, ignoring resize: " + newWidth + "x" + newHeight);
+            return;
+        }
+
+        try {
+            // Calculate new DPI based on the size change
+            int newDpi = dpi;
+            if (displaySize != null) {
+                // Scale DPI proportionally to maintain similar pixel density
+                int oldMax = Math.max(displaySize.getWidth(), displaySize.getHeight());
+                int newMax = Math.max(newWidth, newHeight);
+                newDpi = (dpi * newMax) / oldMax;
+            }
+
+            // Ensure DPI is within valid range (Android requires DPI >= 1)
+            newDpi = Math.max(1, newDpi);
+
+            // Resize the virtual display
+            virtualDisplay.resize(newWidth, newHeight, newDpi);
+
+            // Update our internal state
+            displaySize = new Size(newWidth, newHeight);
+            dpi = newDpi;
+
+            Ln.i("Resized display to: " + newWidth + "x" + newHeight + "/" + newDpi);
+
+            // Trigger a reconfiguration
+            invalidate();
+        } catch (Exception e) {
+            Ln.e("Could not resize display", e);
+        }
+    }
+
+    public boolean isResizable() {
+        return resizable;
     }
 }
