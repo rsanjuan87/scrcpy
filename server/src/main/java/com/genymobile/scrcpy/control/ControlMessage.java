@@ -31,7 +31,6 @@ public final class ControlMessage {
 
     public static final int COPY_KEY_NONE = 0;
     public static final int COPY_KEY_COPY = 1;
-    public static final int COPY_KEY_CUT = 2;
 
     private int type;
     private String text;

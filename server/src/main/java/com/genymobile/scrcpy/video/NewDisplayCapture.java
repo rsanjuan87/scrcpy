@@ -49,7 +49,7 @@ public class NewDisplayCapture extends SurfaceCapture {
     private Size mainDisplaySize;
     private int mainDisplayDpi;
     private int maxSize;
-    private int displayImePolicy;
+    private final int displayImePolicy;
     private final Rect crop;
     private final boolean captureOrientationLocked;
     private final Orientation captureOrientation;
@@ -63,7 +63,7 @@ public class NewDisplayCapture extends SurfaceCapture {
     private Size physicalSize; // the physical size of the display (without rotation)
 
     private int dpi;
-    private boolean resizable;
+    private final boolean resizable;
 
     public NewDisplayCapture(VirtualDisplayListener vdListener, Options options) {
         this.vdListener = vdListener;
@@ -297,13 +297,13 @@ public class NewDisplayCapture extends SurfaceCapture {
 
             // Resize the virtual display
             virtualDisplay.resize(newWidth, newHeight, newDpi);
-            
+
             // Update our internal state
             displaySize = new Size(newWidth, newHeight);
             dpi = newDpi;
-            
+
             Ln.i("Resized display to: " + newWidth + "x" + newHeight + "/" + newDpi);
-            
+
             // Trigger a reconfiguration
             invalidate();
         } catch (Exception e) {

@@ -3,16 +3,10 @@ package com.genymobile.scrcpy.device;
 public final class NewDisplay {
     private Size size;
     private int dpi;
-    private boolean resizable;
+    private final boolean resizable;
 
     public NewDisplay() {
         // Auto size and dpi, not resizable
-        this.resizable = false;
-    }
-
-    public NewDisplay(Size size, int dpi) {
-        this.size = size;
-        this.dpi = dpi;
         this.resizable = false;
     }
 
