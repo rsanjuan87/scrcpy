@@ -802,6 +802,9 @@ aoa_complete:
         const char *window_title =
             options->window_title ? options->window_title : info->device_name;
 
+        // Check if new_display is resizable (contains :r)
+        bool resizable_new_display = options->new_display && strstr(options->new_display, ":r") != NULL;
+
         struct sc_screen_params screen_params = {
             .video = options->video_playback,
             .controller = controller,
@@ -824,6 +827,7 @@ aoa_complete:
             .mipmaps = options->mipmaps,
             .fullscreen = options->fullscreen,
             .start_fps_counter = options->start_fps_counter,
+            .resizable_new_display = resizable_new_display,
         };
 
         if (!sc_screen_init(&s->screen, &screen_params)) {

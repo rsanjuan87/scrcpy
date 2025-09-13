@@ -12,6 +12,7 @@ import com.genymobile.scrcpy.device.Position;
 import com.genymobile.scrcpy.device.Size;
 import com.genymobile.scrcpy.util.Ln;
 import com.genymobile.scrcpy.util.LogUtils;
+import com.genymobile.scrcpy.video.NewDisplayCapture;
 import com.genymobile.scrcpy.video.SurfaceCapture;
 import com.genymobile.scrcpy.video.VirtualDisplayListener;
 import com.genymobile.scrcpy.wrappers.ClipboardManager;
@@ -330,6 +331,9 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
                 break;
             case ControlMessage.TYPE_RESET_VIDEO:
                 resetVideo();
+                break;
+            case ControlMessage.TYPE_RESIZE_DISPLAY:
+                resizeDisplay(msg.getWidth(), msg.getHeight());
                 break;
             default:
                 // do nothing
@@ -752,6 +756,20 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
         if (surfaceCapture != null) {
             Ln.i("Video capture reset");
             surfaceCapture.requestInvalidate();
+        }
+    }
+
+    private void resizeDisplay(int width, int height) {
+        if (surfaceCapture instanceof NewDisplayCapture) {
+            NewDisplayCapture newDisplayCapture = (NewDisplayCapture) surfaceCapture;
+            if (newDisplayCapture.isResizable()) {
+                Ln.i("Resizing display to " + width + "x" + height);
+                newDisplayCapture.resizeDisplay(width, height);
+            } else {
+                Ln.w("Display is not resizable");
+            }
+        } else {
+            Ln.w("Resize display not supported for current capture type");
         }
     }
 }
