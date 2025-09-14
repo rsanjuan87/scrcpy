@@ -15,9 +15,9 @@ You can make the display resizable by adding `:r` to the option. Additionally, y
 
 ```bash
 scrcpy --new-display=1920x1080:r           # resizable display
-scrcpy --new-display=1920x1080:r2.0        # resizable with 2x resolution
-scrcpy --new-display=:r0.5                 # resizable with half resolution
-scrcpy --new-display=/420:r1.5             # resizable with 1.5x resolution
+scrcpy --new-display=1920x1080:r2.0        # resizable with 2x factor
+scrcpy --new-display=:r0.5                 # resizable with 0.5x factor
+scrcpy --new-display=/420:r1.5             # resizable with 1.5x factor
 ```
 
 The resolution factor must be between 0.1 and 10.0.
