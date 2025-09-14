@@ -35,4 +35,5 @@ public final class NewDisplay {
     public boolean hasExplicitDpi() {
         return dpi != 0;
     }
+
 }

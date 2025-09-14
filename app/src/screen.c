@@ -251,45 +251,8 @@ event_watcher(void *data, SDL_Event *event) {
     assert(screen->video);
     if (event->type == SDL_WINDOWEVENT
             && event->window.event == SDL_WINDOWEVENT_RESIZED) {
-        int width = event->window.data1;
-        int height = event->window.data2;
-        if (screen->resizable_new_display) {
-            if ((!sizes_are_close(width, screen->last_window_width, 2) || !sizes_are_close(height, screen->last_window_height, 2)) &&
-                !screen->initial_setup && !screen->content_driven_resize) {
-                screen->last_window_width = width;
-                screen->last_window_height = height;
-                // --- Resize diferido ---
-                screen->pending_resize_width = width;
-                screen->pending_resize_height = height;
-                if (screen->resize_timer) {
-                    SDL_RemoveTimer(screen->resize_timer);
-                }
-                screen->resize_timer = SDL_AddTimer(RESIZE_FINISHED_DELAY, resize_timer_callback, screen);
-                // --- Fin resize diferido ---
-                sc_screen_render(screen, true);
-            } else if (screen->initial_setup) {
-                LOGD("[RESIZED] Initial setup resize ignored: %dx%d", width, height);
-                sc_screen_render(screen, true);
-            } else if (screen->content_driven_resize) {
-                LOGD("[RESIZED] Content-driven resize ignored: %dx%d", width, height);
-                sc_screen_render(screen, true);
-            }
-        } else {
-            // Modo normal
-            if (screen->content_driven_resize) {
-                LOGD("[RESIZED] Content-driven resize, solo render");
-                sc_screen_render(screen, true);
-                return 0;
-            }
-            if (screen->initial_setup) {
-                LOGD("[RESIZED] Initial setup, solo render");
-                sc_screen_render(screen, true);
-                return 0;
-            }
-            LOGD("[RESIZED] User resize detected: %dx%d", width, height);
-            sc_screen_render(screen, true);
-            sc_screen_send_resize_display(screen, width, height);
-        }
+        // Only handle rendering for the workaround, resize logic should be handled elsewhere
+        sc_screen_render(screen, true);
     }
     return 0;
 }
@@ -392,6 +355,9 @@ sc_screen_init(struct sc_screen *screen,
     screen->req.start_fps_counter = params->start_fps_counter;
 
     screen->resizable_new_display = params->resizable_new_display;
+    screen->resolution_factor = params->resolution_factor;
+    
+    LOGI("Resolution factor: %.2f", screen->resolution_factor);
 
     bool ok = sc_frame_buffer_init(&screen->fb);
     if (!ok) {
@@ -924,8 +890,18 @@ sc_screen_handle_event(struct sc_screen *screen, const SDL_Event *event) {
                             screen->last_window_width = w;
                             screen->last_window_height = h;
                             // --- Resize diferido ---
-                            screen->pending_resize_width = w;
-                            screen->pending_resize_height = h;
+                            // Round to multiple of 8 to match server-side rounding and avoid quality degradation
+                            int rounded_w = (w + 4) & ~7;  // Round to nearest multiple of 8
+                            int rounded_h = (h + 4) & ~7;  // Round to nearest multiple of 8
+                            
+                            // Resize window to rounded dimensions to maintain quality
+                            if (rounded_w != w || rounded_h != h) {
+                                SDL_SetWindowSize(screen->window, rounded_w, rounded_h);
+                                LOGD("Window resized to rounded dimensions: %dx%d (from %dx%d)", rounded_w, rounded_h, w, h);
+                            }
+                            
+                            screen->pending_resize_width = rounded_w;
+                            screen->pending_resize_height = rounded_h;
                             if (screen->resize_timer) {
                                 SDL_RemoveTimer(screen->resize_timer);
                             }
@@ -984,14 +960,46 @@ sc_screen_send_resize_display(struct sc_screen *screen, int width, int height) {
         LOGD("Display size too small, ignoring resize: %dx%d", width, height);
         return;
     }
+    
+    // Apply resolution factor if in resizable mode
+    int adjusted_width = width;
+    int adjusted_height = height;
+    
+    if (screen->resizable_new_display && screen->resolution_factor != 1.0f) {
+        adjusted_width = (int)(width * screen->resolution_factor);
+        adjusted_height = (int)(height * screen->resolution_factor);
+        
+        // Ensure minimum size
+        if (adjusted_width < 1) adjusted_width = 1;
+        if (adjusted_height < 1) adjusted_height = 1;
+        
+        // Ensure maximum size to avoid encoder issues
+        // Most Android devices support up to 4K resolution for encoding
+        const int MAX_DIMENSION = 2048; // Safe limit for most devices
+        if (adjusted_width > MAX_DIMENSION || adjusted_height > MAX_DIMENSION) {
+            // Scale down proportionally to fit within limits
+            float scale = 1.0f;
+            if (adjusted_width > adjusted_height) {
+                scale = (float)MAX_DIMENSION / adjusted_width;
+            } else {
+                scale = (float)MAX_DIMENSION / adjusted_height;
+            }
+            adjusted_width = (int)(adjusted_width * scale);
+            adjusted_height = (int)(adjusted_height * scale);
+            LOGW("Limiting dimensions to %dx%d to avoid encoder issues", adjusted_width, adjusted_height);
+        }
+        
+        LOGD("Applying resolution factor %.2f: %dx%d -> %dx%d", 
+             screen->resolution_factor, width, height, adjusted_width, adjusted_height);
+    }
 
     struct sc_control_msg msg;
     msg.type = SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY;
-    msg.resize_display.width = (uint16_t) width;
-    msg.resize_display.height = (uint16_t) height;
+    msg.resize_display.width = (uint16_t) adjusted_width;
+    msg.resize_display.height = (uint16_t) adjusted_height;
 
     if (!sc_controller_push_msg(screen->im.controller, &msg)) {
-        LOGW("Could not request display resize to %dx%d", width, height);
+        LOGW("Could not request display resize to %dx%d", adjusted_width, adjusted_height);
     }
 }
 
@@ -1084,7 +1092,11 @@ static Uint32 resize_timer_callback(Uint32 interval, void *param) {
         LOGD("Ignoring invalid resize: %dx%d", width, height);
         return 0;
     }
-    LOGD("[RESIZE_FINISHED] Notifying display resize: %dx%d", width, height);
-    sc_screen_send_resize_display(screen, width, height);
+    // Round to multiple of 8 to match server-side rounding and avoid quality degradation
+    int rounded_w = (width + 4) & ~7;  // Round to nearest multiple of 8
+    int rounded_h = (height + 4) & ~7;  // Round to nearest multiple of 8
+    
+    LOGD("[RESIZE_FINISHED] Notifying display resize: %dx%d (rounded from %dx%d)", rounded_w, rounded_h, width, height);
+    sc_screen_send_resize_display(screen, rounded_w, rounded_h);
     return 0;
 }
